@@ -1,0 +1,4 @@
+#exclude eclipse related files
+RemoteSystemsTempFiles/*
+.metadata/*
+
