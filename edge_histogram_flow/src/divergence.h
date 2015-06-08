@@ -42,7 +42,7 @@ void plot_flow(struct edge_flow_t * edge_flow_plot,int front,int rear);
 void calculate_edge_flow(unsigned char * in,unsigned char * out, struct displacement_t* displacement,struct edge_flow_t* edge_flow, struct edge_hist_t* edge_hist,int front,int rear);
 void plot_edge_histogram(int* edge_histogram,int* prev_edge_histogram,int* displacement, double slope, double yint,int size);
 void calculate_edge_histogram(unsigned char * in,unsigned char * out,int * edge_histogram,int image_width,int image_height,char direction);
-void calculate_displacement(int * edge_histogram,int * edge_histogram_prev,int * displacement,int prev_frame_number,int size);
+int calculate_displacement(int * edge_histogram,int * edge_histogram_prev,int * displacement,int prev_frame_number,int size);
 int getMinimum(int* flow_error, int max_ind);
 void line_fit_RANSAC( int* displacement, float* Slope, float* Yint,int size);
 void line_fit(int* displacement, float* Slope, float* Yint,int size);

@@ -27,66 +27,101 @@ void calculate_edge_flow(unsigned char * in,unsigned char * out, struct displace
 	float trans_y=0.0;
 
 
-	int previous_frame_number;
-
-			if(fabs(edge_flow->horizontal[0])<MAX_FLOW&&!isnan(edge_flow->horizontal[0]))
-			{
-				previous_frame_number=(int)((MAX_HORIZON-2)*((float)MAX_FLOW-fabs(edge_flow->horizontal[0]))/(float)MAX_FLOW)+1;
-			}
-			else
-				previous_frame_number=1;
 
 
-			// the previous frame number relative to dynamic parameters
-			int previous_frame_number_rel=front-previous_frame_number;
-			if(previous_frame_number_rel<0)
-				previous_frame_number_rel=rear+(MAX_HORIZON-1-abs(previous_frame_number));
+	int previous_frame_number[2];
 
-			// Copy previous edge gram to pointer
-			printf("%d %d %d %d \n",front,previous_frame_number,previous_frame_number_rel,rear);
-			memcpy(prev_edge_histogram_x_p,&edge_hist[previous_frame_number_rel].horizontal,sizeof(int)*IMAGE_WIDTH);
-			memcpy(prev_edge_histogram_y_p,&edge_hist[previous_frame_number_rel].vertical,sizeof(int)*IMAGE_HEIGHT);
-
-			//Calculculate current edge_histogram
-			calculate_edge_histogram(in,out,edge_histogram_x_p,IMAGE_WIDTH,IMAGE_HEIGHT,'x');
-			calculate_edge_histogram(in,out,edge_histogram_y_p,IMAGE_WIDTH,IMAGE_HEIGHT,'y');
-
-
-			//calculate displacement based on histogram
-			calculate_displacement(edge_histogram_x_p,prev_edge_histogram_x_p,displacement->horizontal,previous_frame_number,IMAGE_WIDTH);
-			calculate_displacement(edge_histogram_y_p,prev_edge_histogram_y_p,displacement->vertical,previous_frame_number,IMAGE_HEIGHT);
+	if(fabs(edge_flow->horizontal[1])<MAX_FLOW&&!isnan(edge_flow->horizontal[1])&&MAX_HORIZON!=1)
+	{
+		previous_frame_number[0]=(int)((MAX_HORIZON-2)*((float)MAX_FLOW-fabs(edge_flow->horizontal[1]))/(float)MAX_FLOW)+1;
+	}
+	else
+		previous_frame_number[0]=1;
+	if(fabs(edge_flow->vertical[1])<MAX_FLOW&&!isnan(edge_flow->vertical[1])&&MAX_HORIZON!=1)
+	{
+		previous_frame_number[1]=(int)((MAX_HORIZON-2)*((float)MAX_FLOW-fabs(edge_flow->vertical[1]))/(float)MAX_FLOW)+1;
+	}
+	else
+		previous_frame_number[1]=1;
 
 
-			//Line fit of the displacement by least square estimation or Ransac
-	#ifdef RANSAC
-			line_fit_RANSAC(displacement->horizontal, &slope_x,&trans_x,IMAGE_WIDTH);
-			line_fit_RANSAC(displacement->vertical, &slope_y,&trans_y,IMAGE_HEIGHT);
-
-	#else
-			line_fit(displacement->horizontal, &slope_x,&trans_x,IMAGE_WIDTH);
-			line_fit(displacement->vertical, &slope_y,&trans_y,IMAGE_HEIGHT);
-	#endif
-
-			//Correct Divergence slope and translation by the amount of frames skipped
-			slope_x=slope_x/(float)previous_frame_number;
-			trans_x=trans_x/(float)previous_frame_number;
-
-			slope_y=slope_y/(float)previous_frame_number;
-			trans_y=trans_y/(float)previous_frame_number;
-
-			edge_flow->horizontal[0]=slope_x;
-			edge_flow->horizontal[1]=trans_x;
-			edge_flow->vertical[0]=slope_y;
-			edge_flow->vertical[1]=trans_y;
-
-			printf("%f %f\n", slope_x, trans_x);
-			//plot_edge_histogram(edge_histogram_x_p,prev_edge_histogram_x_p,displacement->horizontal,slope_x,trans_x,IMAGE_WIDTH);
+	// the previous frame number relative to dynamic parameters
+	int previous_frame_number_rel[2];
+	previous_frame_number_rel[0]=front-previous_frame_number[0];
+	previous_frame_number_rel[1]=front-previous_frame_number[1];
+	if(previous_frame_number_rel[0]<0)
+		previous_frame_number_rel[0]=rear+(MAX_HORIZON-1-abs(previous_frame_number[0]));
+	if(previous_frame_number_rel[1]<0)
+		previous_frame_number_rel[1]=rear+(MAX_HORIZON-1-abs(previous_frame_number[1]));
 
 
+	// Copy previous edge gram to pointer
+	printf("%d %d %d %d \n",front,previous_frame_number[0],previous_frame_number_rel[0],rear);
+	memcpy(prev_edge_histogram_x_p,&edge_hist[previous_frame_number_rel[0]].horizontal,sizeof(int)*IMAGE_WIDTH);
+	memcpy(prev_edge_histogram_y_p,&edge_hist[previous_frame_number_rel[1]].vertical,sizeof(int)*IMAGE_HEIGHT);
 
-			//Copy new edge histogram to the structure
-			memcpy(edge_hist[front].horizontal,edge_histogram_x_p,sizeof(int)*IMAGE_WIDTH);
-			memcpy(edge_hist[front].vertical,edge_histogram_y_p,sizeof(int)*IMAGE_HEIGHT);
+	//Calculculate current edge_histogram
+	calculate_edge_histogram(in,out,edge_histogram_x_p,IMAGE_WIDTH,IMAGE_HEIGHT,'x');
+	calculate_edge_histogram(in,out,edge_histogram_y_p,IMAGE_WIDTH,IMAGE_HEIGHT,'y');
+
+
+	//calculate displacement based on histogram
+	int sum_disx=calculate_displacement(edge_histogram_x_p,prev_edge_histogram_x_p,displacement->horizontal,previous_frame_number[0],IMAGE_WIDTH);
+	int sum_disy=calculate_displacement(edge_histogram_y_p,prev_edge_histogram_y_p,displacement->vertical,previous_frame_number[1],IMAGE_HEIGHT);
+
+
+	//Line fit of the displacement by least square estimation or Ransac
+if(RANSAC==1){
+	line_fit_RANSAC(displacement->horizontal, &slope_x,&trans_x,IMAGE_WIDTH);
+	line_fit_RANSAC(displacement->vertical, &slope_y,&trans_y,IMAGE_HEIGHT);
+}
+	else{
+	line_fit(displacement->horizontal, &slope_x,&trans_x,IMAGE_WIDTH);
+	line_fit(displacement->vertical, &slope_y,&trans_y,IMAGE_HEIGHT);
+	}
+
+	//Correct Divergence slope and translation by the amount of frames skipped
+	slope_x=slope_x/(float)previous_frame_number[0];
+	trans_x=trans_x/(float)previous_frame_number[0];
+
+	slope_y=slope_y/(float)previous_frame_number[1];
+	trans_y=trans_y/(float)previous_frame_number[1];
+
+	edge_flow->horizontal[0]=slope_x;
+
+
+	//To eliminate noise peaks
+	if(sum_disx>50){
+	edge_flow->horizontal[1]=trans_x;}
+	else {edge_flow->horizontal[1]=0.0;
+	edge_flow->horizontal[0]=0.0;}
+
+	if(sum_disy>50)
+	edge_flow->vertical[1]=trans_y;
+	else
+		edge_flow->vertical[1]=0.0;
+
+	//Smoothing
+
+	if (abs(trans_x-edge_flow->horizontal[1])>1)
+		trans_x=(trans_x-edge_flow->horizontal[1])/2;
+
+
+	if (abs(trans_y-edge_flow->vertical[1])>1)
+		trans_y=(trans_y-edge_flow->vertical[1])/2;
+
+
+
+	edge_flow->vertical[0]=slope_y;
+
+	printf("%f %f\n", slope_x, trans_x);
+	//plot_edge_histogram(edge_histogram_x_p,prev_edge_histogram_x_p,displacement->horizontal,slope_x,trans_x,IMAGE_WIDTH);
+
+
+
+	//Copy new edge histogram to the structure
+	memcpy(edge_hist[front].horizontal,edge_histogram_x_p,sizeof(int)*IMAGE_WIDTH);
+	memcpy(edge_hist[front].vertical,edge_histogram_y_p,sizeof(int)*IMAGE_HEIGHT);
 }
 
 void plot_flow(struct edge_flow_t *edge_flow_plot,int front, int rear){
@@ -124,15 +159,15 @@ void plot_flow(struct edge_flow_t *edge_flow_plot,int front, int rear){
 		cv::line(flow_plot,line1_vert,line2_vert,Scalar(255,0,0));
 
 
-        line1.x=line2.x;
-        line1.y=line2.y;
+		line1.x=line2.x;
+		line1.y=line2.y;
 
-        line1_vert.x=line2_vert.x;
-        line1_vert.y=line2_vert.y;
+		line1_vert.x=line2_vert.x;
+		line1_vert.y=line2_vert.y;
 
-        idx_plot++;
-        if (idx_plot>IMAGE_WIDTH)
-        idx_plot=0;
+		idx_plot++;
+		if (idx_plot>IMAGE_WIDTH)
+			idx_plot=0;
 
 	}
 
@@ -140,7 +175,7 @@ void plot_flow(struct edge_flow_t *edge_flow_plot,int front, int rear){
 
 	cv::namedWindow("flow_plot",CV_WINDOW_NORMAL );
 
-		cv::imshow("flow_plot", flow_plot);
+	cv::imshow("flow_plot", flow_plot);
 
 
 }
@@ -211,67 +246,67 @@ void calculate_edge_histogram(unsigned char * in,unsigned char * out,int * edge_
 	int idx_filter;
 
 	if(direction=='x')
-	for( x = 0; x < image_width; x++)
-	{
-		edge_histogram_temp=0;
-		for( y = 0; y < image_height; y++)
+		for( x = 0; x < image_width; x++)
 		{
-
-			int idx = image_width*y + (x);
-			sobel=0;
-
-			for(c = -1; c <=1; c++)
+			edge_histogram_temp=0;
+			for( y = 0; y < image_height; y++)
 			{
+
+				int idx = image_width*y + (x);
+				sobel=0;
+
+				for(c = -1; c <=1; c++)
+				{
 					idx_filter= image_width*(y) + (x+c);
 
-				sobel += Sobel[c+1] * (int)(in[idx_filter]);
+					sobel += Sobel[c+1] * (int)(in[idx_filter]);
+				}
+
+				sobel=abs(sobel);
+
+				edge_histogram_temp += sobel;
+				out[idx]=sobel;
+
 			}
 
-			sobel=abs(sobel);
-
-			edge_histogram_temp += sobel;
-			out[idx]=sobel;
+			edge_histogram[x]=(int)edge_histogram_temp;
 
 		}
-
-		edge_histogram[x]=(int)edge_histogram_temp;
-
-	}
 	else if(direction=='y')
 
-	for( y = 0; y < image_height; y++)
-	{
-		edge_histogram_temp=0;
-		for( x = 0;x < image_width; x++)
+		for( y = 0; y < image_height; y++)
 		{
-
-			int idx = image_width*y + (x);
-			sobel=0;
-
-			for(c = -1; c <=1; c++)
+			edge_histogram_temp=0;
+			for( x = 0;x < image_width; x++)
 			{
+
+				int idx = image_width*y + (x);
+				sobel=0;
+
+				for(c = -1; c <=1; c++)
+				{
 
 					idx_filter = image_width*(y+c) + (x);
 
-				sobel += Sobel[c+1] * (int)(in[idx_filter]);
+					sobel += Sobel[c+1] * (int)(in[idx_filter]);
+				}
+
+				sobel=abs(sobel);
+
+				edge_histogram_temp += sobel;
+				out[idx]=sobel;
+
 			}
 
-			sobel=abs(sobel);
-
-			edge_histogram_temp += sobel;
-			out[idx]=sobel;
+			edge_histogram[y]=(int)edge_histogram_temp;
 
 		}
-
-		edge_histogram[y]=(int)edge_histogram_temp;
-
-	}
 	else
 		printf("direction is wrong!!\n");
 
 }
 
-void calculate_displacement(int * edge_histogram,int * edge_histogram_prev,int * displacement,int prev_frame_number,int size)
+int calculate_displacement(int * edge_histogram,int * edge_histogram_prev,int * displacement,int prev_frame_number,int size)
 {	int  c,r;
 int y,x,flow_ind;
 
@@ -311,35 +346,40 @@ for(x=0; x<size;x++)
 	}else
 		displacement[x]=0;
 
+	sum_dis+=abs(displacement[x]);
 
 }
-
+printf("sum_dis %d\n",sum_dis);
+return sum_dis;
 }
 
 void line_fit(int* displacement, float* Slope, float* Yint,int size)
 {
 	int x;
 
-	int Count=192-20;
+	int Count;//=192-20;
 	int SumY,SumX,SumX2,SumXY;
 	int XMean,YMean;
 	int k;
 	int count_disp;
 
 	for(k=0;k<size;k++){
-		count_disp+=displacement[k];    }
+		count_disp+=abs(displacement[k]);    }
 
 	double Slope_temp,Yint_temp;
 
 	//double Slope,Yint;
 
-	for(x=10;x<192-10;x++){
+	for(x=10;x<size-10;x++){
 
+		if(displacement[x]!=0){
 		SumX+=x;
 		SumY+=displacement[x];
 
 		SumX2+=x *x;
 		SumXY+=x *displacement[x];
+		Count++;
+		}
 
 	}
 	XMean=SumX/Count;
@@ -348,8 +388,12 @@ void line_fit(int* displacement, float* Slope, float* Yint,int size)
 	Slope_temp=((double)(SumXY-SumX*YMean)/(double)(SumX2-SumX*XMean));
 	Yint_temp= (YMean-Slope_temp* (double)XMean);
 
+	if (count_disp!=0){
 	*Slope=Slope_temp;
-	*Yint=Yint_temp;
+	*Yint=Yint_temp;}
+	else{
+	*Slope=0.0;
+	*Yint=0.0;}
 	//printf("%f %f\n", Slope, Yint);
 
 
