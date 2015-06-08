@@ -1,4 +1,5 @@
 #exclude eclipse related files
 RemoteSystemsTempFiles/*
 .metadata/*
+edge_histogram_flow/Debug/*
 
