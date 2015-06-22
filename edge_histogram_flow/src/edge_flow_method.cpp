@@ -34,21 +34,29 @@ int main(int, char**)
 
 	//Initializing the dynamic parameters and the edge histogram structure
 	int rear=1, front=0;
-	//struct edge_hist_t edge_hist[MAX_HORIZON];
-	int i;
 
+	//Intializing edge histogram structure
 	struct edge_hist_t* edge_hist;
 	edge_hist=(struct edge_hist_t*)calloc(MAX_HORIZON,sizeof(struct edge_hist_t));
 
 	struct edge_flow_t* edge_flow_plot;
 	edge_flow_plot=(struct edge_flow_t*)calloc(IMAGE_WIDTH,sizeof(struct edge_flow_t));
-
 	int rear_plot=1,front_plot=0;
 
-	/*for(i=0;i<MAX_HORIZON;i++){
-		&edge_hist[i].horizontal=(int)malloc(sizeof(int)*IMAGE_WIDTH);
-		&edge_hist[i].vertical=(int)malloc(sizeof(int)*IMAGE_WIDTH);}*/
 
+
+	// For the displacment calculation
+	int window_size=10,max_distance=50,edge_thres=50;
+
+	float coveriance_x=0;
+	float coveriance_y=0;
+
+	struct edge_flow_t prev_edge_flow;
+
+	prev_edge_flow.horizontal[0]=0.0;
+	prev_edge_flow.horizontal[1]=0.0;
+	prev_edge_flow.vertical[0]=0.0;
+	prev_edge_flow.vertical[1]=0.0;
 
 	//Initializing for divergence and flow parameters
 	struct edge_flow_t edge_flow;
@@ -72,15 +80,11 @@ int main(int, char**)
 		frame_buffer_p=frame.data;
 		memcpy(image_buffer_p,frame_buffer_p,192*128);
 
+		// Calculate the edge histogram displacemen
+		int median_features;
+		median_features=calculate_edge_flow(image_buffer_p,image_edge_buffer_p,&displacement,&edge_flow,edge_hist,front,rear,window_size,max_distance,edge_thres,IMAGE_WIDTH,IMAGE_HEIGHT);
 
-
-
-        calculate_edge_flow(image_buffer_p,image_edge_buffer_p,&displacement,&edge_flow,edge_hist,front,rear);
 		plot_edge_histogram(edge_hist[front].horizontal,edge_hist[rear].horizontal,displacement.horizontal,edge_flow.horizontal[0],edge_flow.horizontal[1],IMAGE_WIDTH);
-
-
-
-		//void edge_flow(unsigned char * in,unsigned char * out, struct displacement_t* displacement,struct edge_flow_t* edge_flow,struct edge_hist_t* edge_hist,int* front,int* rear)
 
 		//Show the results and edge video
 		frame.copyTo(frame_processed);
@@ -91,6 +95,16 @@ int main(int, char**)
 		cv::namedWindow("video",CV_WINDOW_NORMAL );
 		cv::imshow("video", frame_processed);
 
+
+		// Kalman Filtering
+		float Q=0.01;
+		float R=1;
+		float new_est_x,new_est_y;
+		new_est_x=simpleKalmanFilter(&coveriance_x,prev_edge_flow.horizontal[1],edge_flow.horizontal[1],Q,R);
+		new_est_y=simpleKalmanFilter(&coveriance_y,prev_edge_flow.vertical[1],edge_flow.vertical[1],Q,R);
+
+		edge_flow.horizontal[1]=new_est_x;
+		edge_flow.vertical[1]=new_est_y;
 
 
 
@@ -106,16 +120,18 @@ int main(int, char**)
 		memcpy(edge_flow_plot[front_plot].horizontal,&edge_flow.horizontal,2*sizeof(float));
 		memcpy(edge_flow_plot[front_plot].vertical,&edge_flow.vertical,2*sizeof(float));
 
-		 plot_flow(edge_flow_plot,front_plot,rear_plot);
-			// Move the dynamic indices and make them circular
-			front_plot++;
-			rear_plot++;
+		plot_flow(edge_flow_plot,front_plot,rear_plot);
 
-			if(front_plot>IMAGE_WIDTH-1)
-				front_plot=0;
-			if(rear_plot>IMAGE_WIDTH-1)
-				rear_plot=0;
+		// For the plot: Move the dynamic indices and make them circular
+		front_plot++;
+		rear_plot++;
 
+		if(front_plot>IMAGE_WIDTH-1)
+			front_plot=0;
+		if(rear_plot>IMAGE_WIDTH-1)
+			rear_plot=0;
+
+		memcpy(&prev_edge_flow,&edge_flow,4*sizeof(float));
 
 
 		if(cv::waitKey(50) >= 0) break;
